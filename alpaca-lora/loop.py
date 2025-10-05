@@ -2,29 +2,29 @@
 # coding: utf-8
 import argparse
 import os
-n = os.getcwd().split('/')[2]
+#n = os.getcwd().split('/')[2]
 import sys
 import jsonlines
 
 import torch
 import transformers
-from peft import PeftModel
+##from peft import PeftModel
 from transformers import GenerationConfig, LlamaForCausalLM, LlamaTokenizer
 from tqdm import tqdm
 
-from utils.callbacks import Iteratorize, Stream
-from utils.prompter import Prompter
+#from utils.callbacks import Iteratorize, Stream
+from prompter import Prompter
 
 import sys
-sys.path.append(f'/home/{n}/hallucination_LLM/evaluate')
+sys.path.append(f'/home/hcchua/AI6130/Self_Reflection_Medical/evaluate')
 
 from sent_similarity import Sent_Similar
 from CTRLEval.ctrleval import CTRLEval
 import numpy as np
-from GPTScore.gpt3_score import gpt3score
+#from GPTScore.gpt3_score import gpt3score
 from loop_eval_utils import evaluate_response, evaluate_knowledge
 
-sys.path.append(f'/home/{n}/hallucination_LLM')
+sys.path.append(f'/home/hcchua/AI6130/Self_Reflection_Medical')
 from loop_utils import main_loop
 
 
@@ -64,11 +64,12 @@ def knowledge_loop(args, model, tokenizer, question, knowledge_loop_list=[]):
     history = []
     
     prompt_template = ''
-    prompter = Prompter(prompt_template)
+    #prompter = Prompter(prompt_template)
 
     instruction = "Provide background knowledge to answer the following question."
     input = question
-    prompt = prompter.generate_prompt(instruction, input)
+    #prompt = prompter.generate_prompt(instruction, input)
+    prompt = instruction + "\n" + input + "\nKnowledge:"
     
     if knowledge_loop_list:
         knowledge = knowledge_loop_list[0]
@@ -94,8 +95,10 @@ def knowledge_loop(args, model, tokenizer, question, knowledge_loop_list=[]):
             instruction = f"The knowledge is not strongly supported by empirical evidence. Please refine the knowledge to improve its factuality."
         else:
             instruction = f"The factuality score for the knowledge is {factuality_score} less than {THRESHOLD_FACTUAL}, which means the knowledge is not strongly supported by empirical evidence. Please refine the knowledge to improve its factuality."
-        prompt = prompter.generate_prompt(instruction, input=None, old_prompt=prompt, response=knowledge)
+        #prompt = prompter.generate_prompt(instruction, input=None, old_prompt=prompt, response=knowledge)
         
+        prompt = instruction + "\n" + input + "\nKnowledge:" + knowledge + "\nRefined Knowledge:"
+
         knowledge = generate_step(args, model, tokenizer, prompt)
         # print('==========\n', knowledge)
         
@@ -128,12 +131,13 @@ def response_loop(args, model, tokenizer, question, final_knowledge):
     history = []
     
     prompt_template = ''
-    prompter = Prompter(prompt_template)
+    #prompter = Prompter(prompt_template)
 
     instruction = f'''Refer to the knowledge: "{final_knowledge}" and answer the following question with one paragraph.'''
     input = question
 
-    prompt = prompter.generate_prompt(instruction, input)
+    #prompt = prompter.generate_prompt(instruction, input)
+    prompt = instruction + "\n" + input + "\nAnswer:"
     
     response = generate_step(args, model, tokenizer, prompt)
     loop_i = 0
@@ -152,7 +156,8 @@ def response_loop(args, model, tokenizer, question, final_knowledge):
         else:
             instruction = f"The consistency score for the knowledge is {cons_score_knowledge} less than {THRESHOLD_CONS}, which means the alignment and consistency between response and knowledge are low. Please refine the response to improve its consistency."
         
-        prompt = prompter.generate_prompt(instruction, input=None, old_prompt=prompt, response=response)
+        #prompt = prompter.generate_prompt(instruction, input=None, old_prompt=prompt, response=response)
+        prompt = instruction + "\n" + input + "\nKnowledge:" + final_knowledge + "\nOld Answer:" + response + "\nRefined Answer:"
         
         response = generate_step(args, model, tokenizer, prompt)
         # print('==========\n', response)
@@ -202,9 +207,6 @@ parser.add_argument("--max_new_tokens", type=int, default=128)
 
 args = parser.parse_args()
 
-
-base_model = 'decapoda-research/llama-7b-hf'
-lora_weights = 'tloen/alpaca-lora-7b'
 device = "cuda"
 
 if args.max_response_loop > 1:
@@ -212,23 +214,23 @@ if args.max_response_loop > 1:
 # if args.max_knowledge_loop > 1:
 entailment_scorer = Sent_Similar()
     
-load_8bit = True
-base_model = 'decapoda-research/llama-7b-hf'
-lora_weights = 'tloen/alpaca-lora-7b'
+load_8bit = False
+base_model = 'meta-llama/Llama-2-7b-hf'
+#lora_weights = 'tloen/alpaca-lora-7b'
 
 tokenizer = LlamaTokenizer.from_pretrained(base_model)
 
 model = LlamaForCausalLM.from_pretrained(
     base_model,
-    load_in_8bit=load_8bit,
+    #load_in_8bit=load_8bit,
     torch_dtype=torch.float16,
     device_map="auto",
 )
-model = PeftModel.from_pretrained(
-    model,
-    lora_weights,
-    torch_dtype=torch.float16,
-)
+#model = PeftModel.from_pretrained(
+#    model,
+#    lora_weights,
+#    torch_dtype=torch.float16,
+#)
 
 # unwind broken decapoda-research config
 model.config.pad_token_id = tokenizer.pad_token_id = 0  # unk
@@ -271,9 +273,9 @@ for source in args.sources:
                 line.update({'generated_knowledge': final_knowledge})
                 line.update({'generated_answer': final_response})
                 
-                writer = jsonlines.open(out_file, mode='a')
-                writer.write(line)
-                writer.close()
+                #writer = jsonlines.open(out_file, mode='a')
+                #writer.write(line)
+                #writer.close()
 
                 
     else:
@@ -289,6 +291,7 @@ for source in args.sources:
                 line.update({'generated_knowledge': final_knowledge})
                 line.update({'generated_answer': final_response})
                 
-                writer = jsonlines.open(out_file, mode='a')
-                writer.write(line)
-                writer.close()
+                #print(line)
+                #writer = jsonlines.open(out_file, mode='a')
+                #writer.write(line). # FIX: TypeError: Object of type float32 is not JSON serializable
+                #writer.close()
