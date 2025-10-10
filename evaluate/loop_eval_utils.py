@@ -44,4 +44,3 @@ Knowledge: ''',}
         score_list = directly_get_score(gptscore_model, gptscore_tokenizer, srcs, tgts, prompt_text="")
         gptscore = score_list[0]
     return gptscore
-    
