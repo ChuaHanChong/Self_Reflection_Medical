@@ -1,6 +1,5 @@
 from GPTScore.gpt3_score import gpt3score
 from opt_score import directly_get_score
-import torch
 
 def evaluate_response(entailment_scorer, ctrleval_scorer, question, answer, knowledge):
     scores, _ = entailment_scorer.get_scores(question, [answer])
