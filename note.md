@@ -14,13 +14,12 @@ git clone git@github.com:jinlanfu/GPTScore.git
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 python3 loop.py \
---input-file /home/hcchua/AI6130/Self_Reflection_Medical/dataset/{source}/test_data.jsonl \
+--input-file dataset/pubmedqa/test_data.jsonl \
 --sources 'pubmedqa' \
 --out-dir output \
 --max-loop 3 \
 --max-knowledge-loop 3 \
 --max-response-loop 3 \
---gptscore-model "Alpaca_Lora" \
 --demo-num 0 \
 --threshold-entailment 0.8 \
 --threshold-fact -1.0 \

@@ -46,9 +46,7 @@ def knowledge_loop(args, model, tokenizer, question, knowledge_loop_list=[]):
     candidates = []
     history = []
 
-    instruction = "Provide background knowledge to answer the following question."
-    input = question
-    prompt = instruction + "\n" + input + "\nKnowledge:"
+    prompt = f"Provide background knowledge to answer the given question: \"{question}\"."
 
     if knowledge_loop_list:
         knowledge = knowledge_loop_list[0]
@@ -72,8 +70,8 @@ def knowledge_loop(args, model, tokenizer, question, knowledge_loop_list=[]):
         else:
             instruction = f"The factuality score for the knowledge is {factuality_score} less than {THRESHOLD_FACTUAL}, which means the knowledge is not strongly supported by empirical evidence. Please refine the knowledge to improve its factuality."
 
-        prompt = instruction + "\n" + input + "\nKnowledge:" + knowledge + "\nRefined Knowledge:"
-
+        prompt = f"The provided background knowledge for the question: \"{question}\" is \"{knowledge}\".\n\n{instruction}"
+        
         knowledge = generate_step(args, model, tokenizer, prompt)
         # print('==========\n', knowledge)
 
@@ -99,10 +97,7 @@ def response_loop(args, model, tokenizer, question, final_knowledge):
     entailment_score_question_list = []
     history = []
 
-    instruction = f"""Refer to the knowledge: "{final_knowledge}" and answer the following question with one paragraph."""
-    input = question
-
-    prompt = instruction + "\n" + input + "\nAnswer:"
+    prompt = f"""Refer to the background knowledge: \"{final_knowledge}\" and answer the question: \"{question}\" with one paragraph."""
 
     response = generate_step(args, model, tokenizer, prompt)
     loop_i = 0
@@ -119,9 +114,9 @@ def response_loop(args, model, tokenizer, question, final_knowledge):
         elif args.no_number:
             instruction = f"The alignment and consistency between response and knowledge are low. Please refine the response to improve its consistency."
         else:
-            instruction = f"The consistency score for the knowledge is {cons_score_knowledge} less than {THRESHOLD_CONS}, which means the alignment and consistency between response and knowledge are low. Please refine the response to improve its consistency."
+            instruction = f"The consistency score for the response is {cons_score_knowledge} less than {THRESHOLD_CONS}, which means the alignment and consistency between response and knowledge are low. Please refine the response to improve its consistency."
 
-        prompt = instruction + "\n" + input + "\nKnowledge:" + final_knowledge + "\nOld Answer:" + response + "\nRefined Answer:"
+        prompt = f"The generated response for the question: \"{question}\" is \"{response}\" based on the background knowledge: \"{final_knowledge}\".\n\n{instruction}"
 
         response = generate_step(args, model, tokenizer, prompt)
         # print('==========\n', response)
@@ -172,7 +167,12 @@ args = parser.parse_args()
 device = "cuda"
 
 if args.max_response_loop > 1:
-    ctrleval_scorer = CTRLEval(device=device) #consistency
+    ctrleval_scorer = CTRLEval(
+        iwf_dir="CTRLEval/iwf_full.txt",
+        prompt_dir="CTRLEval/prompt/prompt_topic.txt",
+        verbal_dir="CTRLEval/prompt/verbal_topic.txt",
+        device=device,
+    ) #consistency
 # if args.max_knowledge_loop > 1:
 entailment_scorer = Sent_Similar()
 
@@ -186,7 +186,7 @@ model = LlamaForCausalLM.from_pretrained(
 )
 model.eval()
 
-out_dir = f"{args.out_dir}_MaxL{args.max_loop}_MaxKL{args.max_knowledge_loop}MaxRL{args.max_response_loop}_ThE{args.threshold_entailment}ThF{args.threshold_fact}ThC{args.threshold_consistency}_{args.gptscore_model}_Demo{args.demo_num}"
+out_dir = f"{args.out_dir}_MaxL{args.max_loop}_MaxKL{args.max_knowledge_loop}MaxRL{args.max_response_loop}_ThE{args.threshold_entailment}ThF{args.threshold_fact}ThC{args.threshold_consistency}_Demo{args.demo_num}"
 os.makedirs(out_dir, exist_ok=True)
 
 for source in args.sources:
