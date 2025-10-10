@@ -4,7 +4,7 @@ import numpy as np
 import jsonlines
 from tqdm import tqdm
 import csv
-from evaluate.CTRLEval.ctrleval import CTRLEval
+from ctrleval import CTRLEval
 import re
 import os
 
