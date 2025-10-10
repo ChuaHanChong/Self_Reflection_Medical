@@ -31,6 +31,7 @@ def main_loop(args, line, model, tokenizer, knowledge_loop, response_loop):
         main_loop_i += 1
 
     if (MAX_LOOP > 1) and entailment_score_question < THRESHOLD_ENTAIL:
+        # still not satisified, highest_score
         candidates.sort()
         final_knowledge, final_response = candidates[-1][1:]
 
