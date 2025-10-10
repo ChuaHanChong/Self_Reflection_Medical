@@ -10,16 +10,12 @@ def main_loop(args, line, model, tokenizer, knowledge_loop, response_loop):
     question = line["question"]
 
     if "generated_knowledge" in line.keys():
-        final_knowledge, history_knowledge = knowledge_loop(
-            args, model, tokenizer, question, [line["generated_knowledge"]]
-        )
+        final_knowledge, history_knowledge = knowledge_loop(args, model, tokenizer, question, [line["generated_knowledge"]])
     else:
         final_knowledge, history_knowledge = knowledge_loop(args, model, tokenizer, question)
     all_history_knowledge += history_knowledge
 
-    final_response, history_response, entailment_score_question = response_loop(
-        args, model, tokenizer, question, final_knowledge
-    )
+    final_response, history_response, entailment_score_question = response_loop(args, model, tokenizer, question, final_knowledge)
     all_history_response += history_response
     candidates.append([entailment_score_question, final_knowledge, final_response])
 
@@ -29,9 +25,7 @@ def main_loop(args, line, model, tokenizer, knowledge_loop, response_loop):
         final_knowledge, history_knowledge = knowledge_loop(args, model, tokenizer, question)
         all_history_knowledge += history_knowledge
 
-        final_response, history_response, entailment_score_question = response_loop(
-            args, model, tokenizer, question, final_knowledge
-        )
+        final_response, history_response, entailment_score_question = response_loop(args, model, tokenizer, question, final_knowledge)
         all_history_response += history_response
         candidates.append([entailment_score_question, final_knowledge, final_response])
         main_loop_i += 1
