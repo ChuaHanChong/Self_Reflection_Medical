@@ -7,6 +7,9 @@ conda create -n SR python=3.12
 conda activate SR
 pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu124
 pip install jsonlines transformers sentence_transformers nltk SentencePiece protobuf accerate
+
+git clone git@github.com:thu-coai/CTRLEval.git
+git clone git@github.com:jinlanfu/GPTScore.git
 ```
 
 ```bash
