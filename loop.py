@@ -13,7 +13,9 @@ from loop_utils import main_loop
 
 
 def generate_step(args, model, tokenizer, prompt):
+    # print('prompt', prompt)
     inputs = tokenizer(prompt, return_tensors="pt")
+    # print('model.device', model.device)
     input_ids = inputs["input_ids"].to(device)
     generation_config = GenerationConfig(
         temperature=args.temperature,
@@ -23,6 +25,7 @@ def generate_step(args, model, tokenizer, prompt):
         early_stopping=True,
     )
 
+    # Without streaming
     with torch.no_grad():
         generation_output = model.generate(
             input_ids=input_ids,
@@ -51,6 +54,7 @@ def knowledge_loop(args, model, tokenizer, question, knowledge_loop_list=[]):
         knowledge = knowledge_loop_list[0]
     else:
         knowledge = generate_step(args, model, tokenizer, prompt)
+    # print('==========\n', knowledge)
 
     loop_i = 0
     if MAX_KNOWLEDGE_LOOP > 1:
@@ -71,6 +75,8 @@ def knowledge_loop(args, model, tokenizer, question, knowledge_loop_list=[]):
         prompt = instruction + "\n" + input + "\nKnowledge:" + knowledge + "\nRefined Knowledge:"
 
         knowledge = generate_step(args, model, tokenizer, prompt)
+        # print('==========\n', knowledge)
+
         factuality_score = evaluate_knowledge(model, args.demo_num, question, knowledge, tokenizer)
 
         candidates.append([factuality_score, knowledge])
@@ -78,6 +84,7 @@ def knowledge_loop(args, model, tokenizer, question, knowledge_loop_list=[]):
         loop_i += 1
 
     if (MAX_KNOWLEDGE_LOOP > 1) and factuality_score < THRESHOLD_FACTUAL:
+        # still not satisified, highest_score
         candidates.sort()
         return candidates[-1][-1], history
     else:
@@ -94,14 +101,13 @@ def response_loop(args, model, tokenizer, question, final_knowledge):
 
     instruction = f"""Refer to the knowledge: "{final_knowledge}" and answer the following question with one paragraph."""
     input = question
+
     prompt = instruction + "\n" + input + "\nAnswer:"
 
     response = generate_step(args, model, tokenizer, prompt)
     loop_i = 0
     if MAX_RESPONSE_LOOP > 1:
-        entailment_score_question, cons_score_knowledge = evaluate_response(
-            entailment_scorer, ctrleval_scorer, question, response, final_knowledge
-        )
+        entailment_score_question, cons_score_knowledge = evaluate_response(entailment_scorer, ctrleval_scorer, question, response, final_knowledge)
         candidates.append([(entailment_score_question + cons_score_knowledge) / 2, response])
         entailment_score_question_list.append(entailment_score_question)
         history.append([loop_i, response, entailment_score_question, cons_score_knowledge])
@@ -116,11 +122,11 @@ def response_loop(args, model, tokenizer, question, final_knowledge):
             instruction = f"The consistency score for the knowledge is {cons_score_knowledge} less than {THRESHOLD_CONS}, which means the alignment and consistency between response and knowledge are low. Please refine the response to improve its consistency."
 
         prompt = instruction + "\n" + input + "\nKnowledge:" + final_knowledge + "\nOld Answer:" + response + "\nRefined Answer:"
-        response = generate_step(args, model, tokenizer, prompt)
 
-        entailment_score_question, cons_score_knowledge = evaluate_response(
-            entailment_scorer, ctrleval_scorer, question, response, final_knowledge
-        )
+        response = generate_step(args, model, tokenizer, prompt)
+        # print('==========\n', response)
+
+        entailment_score_question, cons_score_knowledge = evaluate_response(entailment_scorer, ctrleval_scorer, question, response, final_knowledge)
         candidates.append([(entailment_score_question + cons_score_knowledge) / 2, response])
         entailment_score_question_list.append(entailment_score_question)
         history.append([loop_i, response, entailment_score_question, cons_score_knowledge])
@@ -128,10 +134,11 @@ def response_loop(args, model, tokenizer, question, final_knowledge):
         loop_i += 1
 
     if MAX_RESPONSE_LOOP > 1 and cons_score_knowledge < THRESHOLD_CONS:
+        # still not satisified, highest_score
         merge = zip(candidates, entailment_score_question_list)
         merge = sorted(merge)
         candidates, entailment_score_question_list = zip(*merge)
-        return candidates[-1][-1], history, entailment_score_question_list[-1]
+        return candidates[-1][-1], history, entailment_score_question_list[-1] #max
     else:
         return response, history, entailment_score_question
 
@@ -165,7 +172,8 @@ args = parser.parse_args()
 device = "cuda"
 
 if args.max_response_loop > 1:
-    ctrleval_scorer = CTRLEval(device=device)
+    ctrleval_scorer = CTRLEval(device=device) #consistency
+# if args.max_knowledge_loop > 1:
 entailment_scorer = Sent_Similar()
 
 base_model = "meta-llama/Llama-2-7b-hf"
@@ -202,9 +210,7 @@ for source in args.sources:
                     continue
                 if i > args.max_sample:
                     break
-                final_knowledge, final_response, all_history_knowledge, all_history_response = main_loop(
-                    args, line, model, tokenizer, knowledge_loop, response_loop
-                )
+                final_knowledge, final_response, all_history_knowledge, all_history_response = main_loop(args, line, model, tokenizer, knowledge_loop, response_loop)
 
                 line.update({"history_knowledge": all_history_knowledge})
                 line.update({"history_response": all_history_response})
@@ -221,9 +227,7 @@ for source in args.sources:
             for i, line in tqdm(enumerate(reader), total=len(reader)):
                 if i > args.max_sample:
                     break
-                final_knowledge, final_response, all_history_knowledge, all_history_response = main_loop(
-                    args, line, model, tokenizer, knowledge_loop, response_loop
-                )
+                final_knowledge, final_response, all_history_knowledge, all_history_response = main_loop(args, line, model, tokenizer, knowledge_loop, response_loop)
 
                 line.update({"history_knowledge": all_history_knowledge})
                 line.update({"history_response": all_history_response})
