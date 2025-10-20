@@ -1,4 +1,4 @@
-def main_loop(args, line, model, tokenizer, knowledge_loop, response_loop):
+def main_loop(args, line, model, tokenizer, knowledge_loop, response_loop, entailment_scorer, ctrleval_scorer):
     all_history_knowledge, all_history_response = [], []
 
     THRESHOLD_ENTAIL = args.threshold_entailment
@@ -15,7 +15,7 @@ def main_loop(args, line, model, tokenizer, knowledge_loop, response_loop):
         final_knowledge, history_knowledge = knowledge_loop(args, model, tokenizer, question)
     all_history_knowledge += history_knowledge
 
-    final_response, history_response, entailment_score_question = response_loop(args, model, tokenizer, question, final_knowledge)
+    final_response, history_response, entailment_score_question = response_loop(args, model, tokenizer, question, final_knowledge, entailment_scorer, ctrleval_scorer)
     all_history_response += history_response
     candidates.append([entailment_score_question, final_knowledge, final_response])
 
@@ -25,7 +25,7 @@ def main_loop(args, line, model, tokenizer, knowledge_loop, response_loop):
         final_knowledge, history_knowledge = knowledge_loop(args, model, tokenizer, question)
         all_history_knowledge += history_knowledge
 
-        final_response, history_response, entailment_score_question = response_loop(args, model, tokenizer, question, final_knowledge)
+        final_response, history_response, entailment_score_question = response_loop(args, model, tokenizer, question, final_knowledge, entailment_scorer, ctrleval_scorer)
         all_history_response += history_response
         candidates.append([entailment_score_question, final_knowledge, final_response])
         main_loop_i += 1

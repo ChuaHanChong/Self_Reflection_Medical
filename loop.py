@@ -1,28 +1,22 @@
-import argparse
-import os
-
-import jsonlines
 import torch
-from tqdm import tqdm
-from transformers import GenerationConfig, LlamaForCausalLM, LlamaTokenizer
+from transformers import GenerationConfig
 
-from CTRLEval.ctrleval import CTRLEval
 from evaluate.loop_eval_utils import evaluate_knowledge, evaluate_response
-from evaluate.sent_similarity import Sent_Similar
-from loop_utils import main_loop
 
 
 def generate_step(args, model, tokenizer, prompt):
     # print('prompt', prompt)
     inputs = tokenizer(prompt, return_tensors="pt")
     # print('model.device', model.device)
-    input_ids = inputs["input_ids"].to(device)
+    input_ids = inputs["input_ids"].to(model.device)
     generation_config = GenerationConfig(
         temperature=args.temperature,
         top_p=args.top_p,
         top_k=args.top_k,
         num_beams=args.num_beams,
         early_stopping=True,
+        pad_token_id=tokenizer.eos_token_id,
+        eos_token_id=tokenizer.eos_token_id,
     )
 
     # Without streaming
@@ -30,6 +24,7 @@ def generate_step(args, model, tokenizer, prompt):
         generation_output = model.generate(
             input_ids=input_ids,
             generation_config=generation_config,
+            attention_mask=inputs["attention_mask"],
             return_dict_in_generate=True,
             output_scores=True,
             max_new_tokens=args.max_new_tokens,
@@ -89,7 +84,7 @@ def knowledge_loop(args, model, tokenizer, question, knowledge_loop_list=[]):
         return knowledge, history
 
 
-def response_loop(args, model, tokenizer, question, final_knowledge):
+def response_loop(args, model, tokenizer, question, final_knowledge, entailment_scorer, ctrleval_scorer):
     print("response_loop")
     THRESHOLD_CONS = args.threshold_consistency
     MAX_RESPONSE_LOOP = args.max_response_loop
@@ -138,103 +133,115 @@ def response_loop(args, model, tokenizer, question, final_knowledge):
         return response, history, entailment_score_question
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--input-file", type=str)
-parser.add_argument("--continue-generate", action="store_true")
-parser.add_argument("--no-number", action="store_true")
-parser.add_argument("--no-aspect", action="store_true")
+if __name__ == "__main__":
+    import argparse
+    import os
 
-parser.add_argument("--out-dir", type=str, default="Alpaca_Lora_7B_loop")
-parser.add_argument("--sources", nargs="+", required=True)
-parser.add_argument("--max-loop", type=int, default=1)
-parser.add_argument("--max-knowledge-loop", type=int, default=1)
-parser.add_argument("--max-response-loop", type=int, default=1)
-parser.add_argument("--demo-num", type=int, default=0)
+    import jsonlines
+    from tqdm import tqdm
+    from transformers import LlamaForCausalLM, LlamaTokenizer
 
-parser.add_argument("--threshold-entailment", type=float, default=0.8)
-parser.add_argument("--threshold-fact", type=float, default=-1)
-parser.add_argument("--threshold-consistency", type=float, default=-5)
+    from CTRLEval.ctrleval import CTRLEval
+    from evaluate.sent_similarity import Sent_Similar
+    from loop_utils import main_loop
 
-parser.add_argument("--max-sample", type=int, default=3000)
-parser.add_argument("--temperature", type=float, default=1.0)
-parser.add_argument("--top_p", type=float, default=1)
-parser.add_argument("--top_k", type=int, default=1)
-parser.add_argument("--num_beams", type=int, default=1)
-parser.add_argument("--max_new_tokens", type=int, default=128)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input-file", type=str)
+    parser.add_argument("--continue-generate", action="store_true")
+    parser.add_argument("--no-number", action="store_true")
+    parser.add_argument("--no-aspect", action="store_true")
 
-args = parser.parse_args()
+    parser.add_argument("--out-dir", type=str, default="Alpaca_Lora_7B_loop")
+    parser.add_argument("--sources", nargs="+", required=True)
+    parser.add_argument("--max-loop", type=int, default=1)
+    parser.add_argument("--max-knowledge-loop", type=int, default=1)
+    parser.add_argument("--max-response-loop", type=int, default=1)
+    parser.add_argument("--demo-num", type=int, default=0)
 
-device = "cuda"
+    parser.add_argument("--threshold-entailment", type=float, default=0.8)
+    parser.add_argument("--threshold-fact", type=float, default=-1)
+    parser.add_argument("--threshold-consistency", type=float, default=-5)
 
-if args.max_response_loop > 1:
-    ctrleval_scorer = CTRLEval(
-        iwf_dir="CTRLEval/iwf_full.txt",
-        prompt_dir="CTRLEval/prompt/prompt_topic.txt",
-        verbal_dir="CTRLEval/prompt/verbal_topic.txt",
-        device=device,
-    ) #consistency
-# if args.max_knowledge_loop > 1:
-entailment_scorer = Sent_Similar()
+    parser.add_argument("--max-sample", type=int, default=3000)
+    parser.add_argument("--temperature", type=float, default=1.0)
+    parser.add_argument("--top_p", type=float, default=1)
+    parser.add_argument("--top_k", type=int, default=1)
+    parser.add_argument("--num_beams", type=int, default=1)
+    parser.add_argument("--max_new_tokens", type=int, default=128)
 
-base_model = "meta-llama/Llama-2-7b-hf"
+    args = parser.parse_args()
 
-tokenizer = LlamaTokenizer.from_pretrained(base_model)
-model = LlamaForCausalLM.from_pretrained(
-    base_model,
-    torch_dtype=torch.float16,
-    device_map=device,
-)
-model.eval()
+    device = "cuda"
 
-out_dir = f"{args.out_dir}_MaxL{args.max_loop}_MaxKL{args.max_knowledge_loop}MaxRL{args.max_response_loop}_ThE{args.threshold_entailment}ThF{args.threshold_fact}ThC{args.threshold_consistency}_Demo{args.demo_num}"
-os.makedirs(out_dir, exist_ok=True)
+    if args.max_response_loop > 1:
+        ctrleval_scorer = CTRLEval(
+            iwf_dir="CTRLEval/iwf_full.txt",
+            prompt_dir="CTRLEval/prompt/prompt_topic.txt",
+            verbal_dir="CTRLEval/prompt/verbal_topic.txt",
+            device=device,
+        ) #consistency
+    # if args.max_knowledge_loop > 1:
+    entailment_scorer = Sent_Similar()
 
-for source in args.sources:
-    print(source)
-    input_file = args.input_file.format(source=source)
-    if args.no_aspect:
-        out_file = f"{out_dir}/{source}_T{args.temperature}_no_aspect.jsonl"
-    elif args.no_number:
-        out_file = f"{out_dir}/{source}_T{args.temperature}_no_number.jsonl"
-    else:
-        out_file = f"{out_dir}/{source}_T{args.temperature}.jsonl"
+    base_model = "meta-llama/Llama-2-7b-hf"
 
-    if args.continue_generate and os.path.exists(out_file):
-        print("continue generate")
-        with jsonlines.open(out_file) as reader:
-            old_lines = list(reader)
-        with jsonlines.open(input_file) as reader:
-            reader = list(reader)
-            for i, line in tqdm(enumerate(reader), total=len(reader)):
-                if i < len(old_lines):
-                    continue
-                if i > args.max_sample:
-                    break
-                final_knowledge, final_response, all_history_knowledge, all_history_response = main_loop(args, line, model, tokenizer, knowledge_loop, response_loop)
+    tokenizer = LlamaTokenizer.from_pretrained(base_model)
+    model = LlamaForCausalLM.from_pretrained(
+        base_model,
+        torch_dtype=torch.float16,
+        device_map=device,
+    )
+    model.eval()
 
-                line.update({"history_knowledge": all_history_knowledge})
-                line.update({"history_response": all_history_response})
-                line.update({"generated_knowledge": final_knowledge})
-                line.update({"generated_answer": final_response})
+    out_dir = f"{args.out_dir}_MaxL{args.max_loop}_MaxKL{args.max_knowledge_loop}MaxRL{args.max_response_loop}_ThE{args.threshold_entailment}ThF{args.threshold_fact}ThC{args.threshold_consistency}_Demo{args.demo_num}"
+    os.makedirs(out_dir, exist_ok=True)
 
-                # writer = jsonlines.open(out_file, mode='a')
-                # writer.write(line)
-                # writer.close()
+    for source in args.sources:
+        print(source)
+        input_file = args.input_file.format(source=source)
+        if args.no_aspect:
+            out_file = f"{out_dir}/{source}_T{args.temperature}_no_aspect.jsonl"
+        elif args.no_number:
+            out_file = f"{out_dir}/{source}_T{args.temperature}_no_number.jsonl"
+        else:
+            out_file = f"{out_dir}/{source}_T{args.temperature}.jsonl"
 
-    else:
-        with jsonlines.open(input_file) as reader:
-            reader = list(reader)
-            for i, line in tqdm(enumerate(reader), total=len(reader)):
-                if i > args.max_sample:
-                    break
-                final_knowledge, final_response, all_history_knowledge, all_history_response = main_loop(args, line, model, tokenizer, knowledge_loop, response_loop)
+        if args.continue_generate and os.path.exists(out_file):
+            print("continue generate")
+            with jsonlines.open(out_file) as reader:
+                old_lines = list(reader)
+            with jsonlines.open(input_file) as reader:
+                reader = list(reader)
+                for i, line in tqdm(enumerate(reader), total=len(reader)):
+                    if i < len(old_lines):
+                        continue
+                    if i > args.max_sample:
+                        break
+                    final_knowledge, final_response, all_history_knowledge, all_history_response = main_loop(args, line, model, tokenizer, knowledge_loop, response_loop, entailment_scorer, ctrleval_scorer)
 
-                line.update({"history_knowledge": all_history_knowledge})
-                line.update({"history_response": all_history_response})
-                line.update({"generated_knowledge": final_knowledge})
-                line.update({"generated_answer": final_response})
+                    line.update({"history_knowledge": all_history_knowledge})
+                    line.update({"history_response": all_history_response})
+                    line.update({"generated_knowledge": final_knowledge})
+                    line.update({"generated_answer": final_response})
 
-                # print(line)
-                # writer = jsonlines.open(out_file, mode='a')
-                # writer.write(line). # FIX: TypeError: Object of type float32 is not JSON serializable
-                # writer.close()
+                    # writer = jsonlines.open(out_file, mode='a')
+                    # writer.write(line)
+                    # writer.close()
+
+        else:
+            with jsonlines.open(input_file) as reader:
+                reader = list(reader)
+                for i, line in tqdm(enumerate(reader), total=len(reader)):
+                    if i > args.max_sample:
+                        break
+                    final_knowledge, final_response, all_history_knowledge, all_history_response = main_loop(args, line, model, tokenizer, knowledge_loop, response_loop, entailment_scorer, ctrleval_scorer)
+
+                    line.update({"history_knowledge": all_history_knowledge})
+                    line.update({"history_response": all_history_response})
+                    line.update({"generated_knowledge": final_knowledge})
+                    line.update({"generated_answer": final_response})
+
+                    # print(line)
+                    # writer = jsonlines.open(out_file, mode='a')
+                    # writer.write(line). # FIX: TypeError: Object of type float32 is not JSON serializable
+                    # writer.close()
