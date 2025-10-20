@@ -1,5 +1,5 @@
-from GPTScore.gpt3_score import gpt3score
 from opt_score import directly_get_score
+
 
 def evaluate_response(entailment_scorer, ctrleval_scorer, question, answer, knowledge):
     scores, _ = entailment_scorer.get_scores(question, [answer])
@@ -27,20 +27,16 @@ def evaluate_response(entailment_scorer, ctrleval_scorer, question, answer, know
 
     
 
-def evaluate_knowledge(gptscore_model, demo_num, question, knowledge, gptscore_tokenizer=None):
+def evaluate_knowledge(score_model, demo_num, question, knowledge, gptscore_tokenizer=None):
     PREFIX = {0: f'''Based on Question, please generate the factual knowledge. To do this, please consider these factors: Verifiability, Objectivity, and Reliability of Source. Note that this evaluation should be based on the best available medical knowledge.
 
 Question: {question}
 Knowledge: ''',}
     prefix = PREFIX[demo_num]
-    
-    if gptscore_model == 'gpt3':
-        gptscore = gpt3score(input=prefix, output=knowledge,
-              gpt3model='davinci003',
-              api_key="[YOUR API KEY]")
-    else:
-        srcs = [prefix]
-        tgts = [knowledge]
-        score_list = directly_get_score(gptscore_model, gptscore_tokenizer, srcs, tgts, prompt_text="")
-        gptscore = score_list[0]
-    return gptscore
+
+    srcs = [prefix]
+    tgts = [knowledge]
+    score_list = directly_get_score(score_model, gptscore_tokenizer, srcs, tgts, prompt_text="")
+    score = score_list[0]
+
+    return score
