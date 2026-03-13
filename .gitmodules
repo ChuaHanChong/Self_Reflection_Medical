@@ -1,0 +1,6 @@
+[submodule "CTRLEval"]
+	path = CTRLEval
+	url = git@github.com:thu-coai/CTRLEval.git
+[submodule "GPTScore"]
+	path = GPTScore
+	url = git@github.com:jinlanfu/GPTScore.git
